@@ -152,7 +152,7 @@ func main() {
 	mw := middleware.Chain(
 		middleware.SecureHeaders(),
 		middleware.XSRFProtect(*xsrfKey),
-		middleware.Robots("robots.txt"),
+		middleware.Robots("public/robots.txt"),
 	)
 
 	log.Printf("Starting server on %s\n", *httpAddr)

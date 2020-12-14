@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/euracresearch/browser"
-	"github.com/euracresearch/browser/static"
+	"github.com/euracresearch/browser/assets"
 )
 
 // Handler serves various HTTP endpoints.
@@ -43,11 +43,12 @@ func NewHandler(options ...Option) *Handler {
 	h.mux.HandleFunc("/de/", h.handleStaticPage())
 
 	h.mux.HandleFunc("/l/", handleLanguage())
-	h.mux.HandleFunc("/static/dl/Official_Glossary.xlsx", grantAccess(static.ServeContent, browser.FullAccess, browser.External))
-	h.mux.HandleFunc("/static/", static.ServeContent)
 
 	h.mux.HandleFunc("/api/v1/series", h.handleSeries())
 	h.mux.HandleFunc("/api/v1/templates", grantAccess(h.handleCodeTemplate(), browser.FullAccess))
+
+	h.mux.HandleFunc("/static/dl/Official_Glossary.xlsx", grantAccess(assets.Public, browser.FullAccess, browser.External))
+	h.mux.HandleFunc("/static/", assets.Public)
 
 	return h
 }

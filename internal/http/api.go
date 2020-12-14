@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/euracresearch/browser"
+	"github.com/euracresearch/browser/assets"
 	"github.com/euracresearch/browser/internal/encoding/csv"
 	"github.com/euracresearch/browser/internal/encoding/csvf"
-	"github.com/euracresearch/browser/static"
 )
 
 func (h *Handler) handleSeries() http.HandlerFunc {
@@ -71,12 +71,12 @@ func (h *Handler) handleCodeTemplate() http.HandlerFunc {
 		err error
 	)
 
-	tmpl.python, err = static.ParseTextTemplates(nil, "templates/python.tmpl")
+	tmpl.python, err = template.ParseFS(assets.Files, "templates/python.tmpl")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	tmpl.rlang, err = static.ParseTextTemplates(nil, "templates/r.tmpl")
+	tmpl.rlang, err = template.ParseFS(assets.Files, "templates/r.tmpl")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -32,6 +32,9 @@ func main() {
 	fs := flag.NewFlagSet("browser", flag.ExitOnError)
 	var (
 		httpAddr          = fs.String("http", defaultAddr, "HTTP service address.")
+		ssl               = fs.Bool("ssl", false, "Use SSL.")
+		sslCertFile       = fs.String("cert.file", "", "SSL certificate file.")
+		sslKeyFile        = fs.String("key.file", "", "SSL certificate key file.")
 		influxAddr        = fs.String("influx.addr", "http://127.0.0.1:8086", "Influx (http:https)://host:port")
 		influxUser        = fs.String("influx.username", "", "Influx username")
 		influxPass        = fs.String("influx.password", "", "Influx password")
@@ -156,6 +159,10 @@ func main() {
 	)
 
 	log.Printf("Starting server on %s\n", *httpAddr)
+	if *ssl && *sslCertFile != "" && *sslKeyFile != "" {
+		log.Fatal(http.ListenAndServeTLS(*httpAddr, *sslCertFile, *sslKeyFile, mw(handler)))
+	}
+
 	log.Fatal(http.ListenAndServe(*httpAddr, mw(handler)))
 }
 

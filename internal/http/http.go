@@ -7,6 +7,7 @@ package http
 
 import (
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/euracresearch/browser"
@@ -17,6 +18,29 @@ const languageCookieName = "browser_lter_lang"
 // ListenAndServe is a wrapper for http.ListenAndServe.
 func ListenAndServe(addr string, handler http.Handler) error {
 	return http.ListenAndServe(addr, handler)
+}
+
+// ListenAndServeTLS is a wrapper for http.ListenAndServeTLS. It will redirect incomming
+// traffic on port 80 to 443.
+func ListenAndServeTLS(addr, certFile, keyFile string, handler http.Handler) error {
+	go func() {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil || host == "" {
+			host = "0.0.0.0"
+		}
+		log.Println("Redirecting traffic from HTTP to HTTPS.")
+		log.Fatal(http.ListenAndServe(host+":80", redirectHandler()))
+	}()
+
+	return http.ListenAndServeTLS(addr, certFile, keyFile, handler)
+}
+
+func redirectHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Connection", "close")
+		url := "https://" + r.Host + r.URL.String()
+		http.Redirect(w, r, url, http.StatusMovedPermanently)
+	})
 }
 
 // Error writes an error message to the response.

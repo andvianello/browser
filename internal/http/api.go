@@ -7,8 +7,11 @@ package http
 import (
 	"errors"
 	"fmt"
+	html "html/template"
 	"log"
 	"net/http"
+	"path"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -128,6 +131,54 @@ func (h *Handler) handleCodeTemplate() http.HandlerFunc {
 	}
 }
 
+func (h *Handler) handleStations() http.HandlerFunc {
+	funcMap := html.FuncMap{
+		"T":  translate,
+		"Is": isRole,
+	}
+
+	tmpl, err := static.ParseTemplates(html.New("station.tmpl").Funcs(funcMap), "html/station.tmpl")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(path.Base(r.URL.Path), 10, 64)
+		if err != nil {
+			Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		lang := languageFromCookie(r)
+		ctx := r.Context()
+		station, err := h.stationService.Station(ctx, id)
+		if err != nil {
+			Error(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		//		m, err := h.db.MeasurementsByStation(ctx, id)
+		//		if err != nil {
+		//			Error(w, err, http.StatusInternalServerError)
+		//			return
+		//		}
+
+		err = tmpl.Execute(w, struct {
+			Station      *browser.Station
+			Measurements []*browser.Measurement
+			Language     string
+		}{
+			Station:      station,
+			Measurements: nil,
+			Language:     lang,
+		})
+		if err != nil {
+			Error(w, err, http.StatusInternalServerError)
+		}
+
+	}
+}
+
 // parseForm parses form values from the given http.Request and returns a
 // browser.Message. It performs basic validation for the given dates.
 func parseMessage(r *http.Request) (*browser.Message, error) {
@@ -158,7 +209,7 @@ func parseMessage(r *http.Request) (*browser.Message, error) {
 	}
 
 	return &browser.Message{
-		Measurements: r.Form["measurements"],
+		Measurements: browser.ParseGroup(r.Form["measurements"]...),
 		Stations:     r.Form["stations"],
 		Landuse:      r.Form["landuse"],
 		Start:        start,

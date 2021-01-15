@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/euracresearch/browser"
@@ -26,16 +28,76 @@ var _ browser.Database = &DB{}
 
 // DB holds information for communicating with InfluxDB.
 type DB struct {
-	Client   client.Client
-	Database string
+	client   client.Client
+	database string
+
+	mu    sync.RWMutex
+	cache map[int64][]browser.Group
 }
 
 // NewDB returns a new instance of DB.
 func NewDB(client client.Client, database string) *DB {
+
 	return &DB{
-		Client:   client,
-		Database: database,
+		client:   client,
+		database: database,
 	}
+}
+
+// measurementsFromGroup returns a list of measurements for each given group.
+// Dublicates will be removed.
+func (db *DB) measurementsFromGroup(groups []browser.Group, showSTD bool) []string {
+	var measure []string
+	for _, group := range groups {
+		re, ok := browser.GroupRegexpMap[group]
+		if !ok {
+			continue
+		}
+
+		q := fmt.Sprintf("SHOW MEASUREMENTS WITH MEASUREMENT =~ /%s/", re)
+		resp, err := db.client.Query(client.NewQuery(q, db.database, ""))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if resp.Error() != nil {
+			log.Println(err)
+			continue
+		}
+
+		for _, result := range resp.Results {
+			for _, serie := range result.Series {
+				for _, value := range serie.Values {
+					for _, v := range value {
+						m := v.(string)
+						if strings.HasSuffix(m, "_std") && !showSTD {
+							continue
+						}
+
+						measure = browser.Unique(measure, m)
+					}
+				}
+			}
+		}
+
+	}
+
+	return measure
+}
+
+func (db *DB) GroupsByStation(ctx context.Context, id int64) ([]browser.Group, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	g, ok := db.cache[id]
+	if ok {
+		db.mu.RUnlock()
+		return g, nil
+	}
+
+	// get measurements from db
+
+	return nil, nil
 }
 
 // Series return a browser.TimeSeries from the given message.
@@ -44,7 +106,7 @@ func (db *DB) Series(ctx context.Context, m *browser.Message) (browser.TimeSerie
 		return nil, browser.ErrDataNotFound
 	}
 
-	resp, err := db.exec(seriesQuery(m))
+	resp, err := db.exec(db.seriesQuery(m))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +188,7 @@ func (db *DB) Series(ctx context.Context, m *browser.Message) (browser.TimeSerie
 	return ts, nil
 }
 
-func seriesQuery(m *browser.Message) ql.Querier {
+func (db *DB) seriesQuery(m *browser.Message) ql.Querier {
 	return ql.QueryFunc(func() (string, []interface{}) {
 		var (
 			buf  bytes.Buffer
@@ -139,7 +201,7 @@ func seriesQuery(m *browser.Message) ql.Querier {
 		start := m.Start.Add(-1 * time.Hour)
 		end := time.Date(m.End.Year(), m.End.Month(), m.End.Day(), 22, 59, 59, 59, time.UTC)
 
-		for _, measure := range m.Measurements {
+		for _, measure := range db.measurementsFromGroup(m.Measurements, m.ShowSTD) {
 			columns := []string{measure, "altitude as elevation", "latitude", "longitude", "depth"}
 
 			sb := ql.Select(columns...)
@@ -165,7 +227,8 @@ func seriesQuery(m *browser.Message) ql.Querier {
 
 func (db *DB) Query(ctx context.Context, m *browser.Message) *browser.Stmt {
 	c := []string{"station", "landuse", "altitude as elevation", "latitude", "longitude"}
-	c = append(c, m.Measurements...)
+	measures := db.measurementsFromGroup(m.Measurements, m.ShowSTD)
+	c = append(c, measures...)
 
 	// Data in InfluxDB is UTC but LTER data is UTC+1 therefor we need to adapt
 	// start and end times. It will shift the start time to -1 hour and will set
@@ -173,7 +236,7 @@ func (db *DB) Query(ctx context.Context, m *browser.Message) *browser.Stmt {
 	start := m.Start.Add(-1 * time.Hour)
 	end := time.Date(m.End.Year(), m.End.Month(), m.End.Day(), 22, 59, 59, 59, time.UTC)
 
-	q, _ := ql.Select(c...).From(m.Measurements...).Where(
+	q, _ := ql.Select(c...).From(measures...).Where(
 		ql.Eq(ql.Or(), "snipeit_location_ref", m.Stations...),
 		ql.And(),
 		ql.TimeRange(start, end),
@@ -181,7 +244,7 @@ func (db *DB) Query(ctx context.Context, m *browser.Message) *browser.Stmt {
 
 	return &browser.Stmt{
 		Query:    q,
-		Database: db.Database,
+		Database: db.database,
 	}
 }
 
@@ -189,7 +252,8 @@ func (db *DB) Query(ctx context.Context, m *browser.Message) *browser.Stmt {
 func (db *DB) exec(q ql.Querier) (*client.Response, error) {
 	query, _ := q.Query()
 
-	resp, err := db.Client.Query(client.NewQuery(query, db.Database, ""))
+	log.Println(query)
+	resp, err := db.client.Query(client.NewQuery(query, db.database, ""))
 	if err != nil {
 		return nil, err
 	}

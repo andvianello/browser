@@ -23,7 +23,7 @@ import (
 func TestQuery(t *testing.T) {
 	var (
 		dbName = "testdb"
-		db     = &DB{Database: dbName}
+		db     = &DB{database: dbName}
 		ctx    = context.Background()
 	)
 
@@ -94,14 +94,14 @@ func TestQuery(t *testing.T) {
 
 func TestSeries(t *testing.T) {
 	c := &mock.InfluxClient{}
-	db := &DB{Client: c, Database: "testdb"}
+	db := &DB{client: c, database: "testdb"}
 	ctx := context.Background()
 
 	// In tests we use always the same message since we use a mock implementation
 	// of the influx client interface which simple returns a client.Reponse from
 	// a give JSON file.
 	testMessage := &browser.Message{
-		Measurements: []string{"air_rh_avg", "air_t_avg", "snow_height"},
+		Measurements: []int64{1, 0, 12},
 		Stations:     []string{"39", "4"},
 		Start:        time.Date(2020, 5, 4, 0, 0, 0, 0, browser.Location),
 		End:          time.Date(2020, 5, 4, 0, 0, 0, 0, browser.Location),

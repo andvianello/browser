@@ -23,16 +23,8 @@ import (
 
 func (h *Handler) handleIndex() http.HandlerFunc {
 	funcMap := template.FuncMap{
-		"T":         translate,
-		"Is":        isRole,
-		"HasSuffix": strings.HasSuffix,
-		"Mod": func(i int) bool {
-			i++
-			return (i % 2) == 0
-		},
-		"Last": func(i, l int) bool {
-			return i == (l - 1)
-		},
+		"T":  translate,
+		"Is": isRole,
 	}
 
 	tmpl, err := static.ParseTemplates(template.New("base.tmpl").Funcs(funcMap), "html/base.tmpl", "html/index.tmpl")
@@ -52,14 +44,20 @@ func (h *Handler) handleIndex() http.HandlerFunc {
 			return
 		}
 
-		data, err := h.metadata.Stations(ctx, &browser.Message{})
+		data, err := h.stationService.Stations(ctx)
 		if err != nil {
 			Error(w, err, http.StatusInternalServerError)
 			return
 		}
 
+		groups := browser.DefaultGroups
+		if user.Role != browser.Public {
+			groups = browser.AllGroups
+		}
+
 		err = tmpl.Execute(w, struct {
 			Data          browser.Stations
+			Groups        []browser.Group
 			User          *browser.User
 			Language      string
 			Path          string
@@ -69,6 +67,7 @@ func (h *Handler) handleIndex() http.HandlerFunc {
 			EndDate       string
 		}{
 			data,
+			groups,
 			user,
 			lang,
 			r.URL.Path,
@@ -106,7 +105,7 @@ func (h *Handler) handleHello() http.HandlerFunc {
 			return
 		}
 
-		data, err := h.metadata.Stations(ctx, &browser.Message{})
+		data, err := h.stationService.Stations(ctx)
 		if err != nil {
 			Error(w, err, http.StatusInternalServerError)
 			return
@@ -171,7 +170,7 @@ func (h *Handler) handleStaticPage() http.HandlerFunc {
 			return
 		}
 
-		data, err := h.metadata.Stations(ctx, &browser.Message{})
+		data, err := h.stationService.Stations(ctx)
 		if err != nil {
 			Error(w, err, http.StatusInternalServerError)
 			return
